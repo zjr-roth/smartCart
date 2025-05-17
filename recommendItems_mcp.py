@@ -17,7 +17,10 @@ load_dotenv()
 mcp = FastMCP("SmartCart")
 
 # Setup basic logging
-
+keywords = {
+    "cameras": ["fujifilm"],
+    ""
+}
 
 def log_debug(message):
     """Log debug messages to stderr for MCP Inspector to capture"""
@@ -358,12 +361,26 @@ def parse_query_parameters(query: str) -> Dict[str, Any]:
             log_debug(f"Extracted count: {params['count']}")
 
         # Extract price range (max price)
-        price_match = re.search(
+        price_max = re.search(
             r'under\s+\$?(\d+(?:\.\d+)?)', query, re.IGNORECASE)
-        if price_match:
-            max_price = float(price_match.group(1))
+        price_min = re.search(
+            r'under\s+\$?(\d+(?:\.\d+)?)', query, re.IGNORECASE)
+        if price_max and price_min:
+            max_price = float(price_max.group(1))
+            min_price = float(price_min.group(1))
+            params["price_range"] = [min_price, max_price]
+            log_debug(f"Extracted price range: {params['price_range']}")
+        
+        if price_max:
+            max_price = float(price_max.group(1))
             params["price_range"] = [0, max_price]
             log_debug(f"Extracted price range: {params['price_range']}")
+            
+        if price_min:
+            min_price = float(price_min.group(1))
+            params["price_range"] = [min_price, float('inf')]
+            log_debug(f"Extracted price range: {params['price_range']}")
+        
 
         # Extract topic by removing count and price patterns
         topic_query = query
