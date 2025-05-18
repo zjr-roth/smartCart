@@ -19,8 +19,9 @@ mcp = FastMCP("SmartCart")
 # Setup basic logging
 keywords = {
     "cameras": ["fujifilm"],
-    ""
+
 }
+
 
 def log_debug(message):
     """Log debug messages to stderr for MCP Inspector to capture"""
@@ -349,6 +350,33 @@ def parse_query_parameters(query: str) -> Dict[str, Any]:
         log_debug(f"Parsing query parameters from: '{query}'")
         params = {"topic": "", "price_range": None, "count": None}
 
+        # Define plural to singular mappings
+        plural_to_singular = {
+            "laptops": "laptop",
+            "notebooks": "notebook",
+            "keyboards": "keyboard",
+            "computers": "computer",
+            "monitors": "monitor",
+            "headphones": "headphone",
+            "speakers": "speaker",
+            "tablets": "tablet",
+            "phones": "phone",
+            "smartphones": "smartphone",
+            "printers": "printer",
+            "mice": "mouse",
+            "mouses": "mouse"
+        }
+
+        # Apply plural to singular mapping to the original query
+        original_query = query
+        for plural, singular in plural_to_singular.items():
+            # Use regex with word boundaries to avoid partial matches
+            pattern = r'\b' + re.escape(plural) + r'\b'
+            query = re.sub(pattern, singular, query, flags=re.IGNORECASE)
+
+        if original_query != query:
+            log_debug(f"Normalized query: '{original_query}' -> '{query}'")
+
         # Extract count
         count_match = re.search(
             r'(?:show|find|get|display)\s+(?:me\s+)?(\d+)', query, re.IGNORECASE)
@@ -360,27 +388,30 @@ def parse_query_parameters(query: str) -> Dict[str, Any]:
             params["count"] = int(count_match.group(1))
             log_debug(f"Extracted count: {params['count']}")
 
-        # Extract price range (max price)
+        # Extract price range - both min and max price
         price_max = re.search(
             r'under\s+\$?(\d+(?:\.\d+)?)', query, re.IGNORECASE)
         price_min = re.search(
-            r'under\s+\$?(\d+(?:\.\d+)?)', query, re.IGNORECASE)
-        if price_max and price_min:
-            max_price = float(price_max.group(1))
-            min_price = float(price_min.group(1))
-            params["price_range"] = [min_price, max_price]
-            log_debug(f"Extracted price range: {params['price_range']}")
-        
-        if price_max:
-            max_price = float(price_max.group(1))
-            params["price_range"] = [0, max_price]
-            log_debug(f"Extracted price range: {params['price_range']}")
-            
+            r'over\s+\$?(\d+(?:\.\d+)?)', query, re.IGNORECASE)
+
+        # Initialize with defaults
+        min_price = 0
+        max_price = None
+
+        # Set min price if found
         if price_min:
             min_price = float(price_min.group(1))
-            params["price_range"] = [min_price, float('inf')]
-            log_debug(f"Extracted price range: {params['price_range']}")
-        
+            log_debug(f"Found minimum price: ${min_price}")
+
+        # Set max price if found
+        if price_max:
+            max_price = float(price_max.group(1))
+            log_debug(f"Found maximum price: ${max_price}")
+
+        # Create price range if either min or max is specified
+        if price_min or price_max:
+            params["price_range"] = [min_price, max_price]
+            log_debug(f"Set price range: {params['price_range']}")
 
         # Extract topic by removing count and price patterns
         topic_query = query
@@ -393,8 +424,11 @@ def parse_query_parameters(query: str) -> Dict[str, Any]:
         if count_match:
             topic_query = re.sub(r'\d+\s+(?:products|items)',
                                  '', topic_query, flags=re.IGNORECASE)
-        if price_match:
+        if price_max:
             topic_query = re.sub(r'under\s+\$?\d+(?:\.\d+)?',
+                                 '', topic_query, flags=re.IGNORECASE)
+        if price_min:
+            topic_query = re.sub(r'over\s+\$?\d+(?:\.\d+)?',
                                  '', topic_query, flags=re.IGNORECASE)
 
         # Remove qualifiers
@@ -404,9 +438,10 @@ def parse_query_parameters(query: str) -> Dict[str, Any]:
 
         # Clean up and set topic
         topic_query = re.sub(r'\s+', ' ', topic_query).strip()
+
         if topic_query:
             params["topic"] = topic_query
-            log_debug(f"Extracted topic: '{params['topic']}'")
+            log_debug(f"Final extracted topic: '{params['topic']}'")
         else:
             log_debug("No topic extracted")
 
